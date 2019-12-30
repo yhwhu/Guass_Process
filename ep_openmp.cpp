@@ -9,17 +9,14 @@ using namespace std;
 // [[Rcpp::depends(RcppArmadillo)]]
 
 field<vec> ep_train(const mat & X, const vec & y);
-// double ep_predict_paralle(const mat & K, vec v, vec tau, mat X, vec y, int kernal_type, rowvec x_test);
-// vec ep_predict_paralle_vec(const mat & K, vec v, vec tau, mat X, vec y, int kernal_type, mat x_test);
+
 mat kernal_compute_paralle(const mat & X1, const mat & X2, int kernal_type);
-// vec kernal_compute_diag(const mat & X1, int kernal_type);
 inline double kernal_func_paralle(const rowvec & x1, const rowvec & x2, int kernal_type);
-// vec ep_predict_paralle_mat(const  mat & K, vec v, vec tau, mat X, vec y, int kernal_type, mat x_test);
-vec ep_predict_paralle_vec(const mat & S_2, const mat & L, const vec & v, const vec &  z, const mat &  X, const vec &  y, int kernal_type, const mat &  x_test);
-    
-vec ep_model_select(const mat & L, const vec & b, const mat & R);
-field<mat> compute_vec(const mat & K, const vec & v, const vec & tau);
-// field<mat> compute_vec2(const mat & K, const vec & v, const vec & tau);
+
+vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const mat & X, int kernal_type, const mat &  x_test);
+
+vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type);
+vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type);
 
 // [[Rcpp::export]]
 field<vec> ep_train(const mat & K, const vec & y) {
@@ -29,7 +26,7 @@ field<vec> ep_train(const mat & K, const vec & y) {
   cout << "Train sample size is: " << n;
   vec v =  zeros<vec>(n), tau = v, mu = v;
   mat sigma = K;
-  int iter = 0, max_iter = 50;
+  int iter = 0, max_iter = 20;
   double tau_i, v_i, tau_i_1, z_i, N_z, Phi_z, mu_hat, sigma_hat, del_tau;
   while( iter++ < max_iter){
     vec tmp = v;
@@ -72,38 +69,16 @@ field<vec> ep_train(const mat & K, const vec & y) {
 }
 
 // [[Rcpp::export]]
-field<mat> compute_vec(const mat & K, const vec & v, const vec & tau){
+vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const mat & X, int kernal_type, const mat &  x_test){
   auto t1 = chrono::high_resolution_clock::now();
-  // predict
+  
   int n = K.n_rows;
   mat S_2 = diagmat(sqrt(tau)), I_n = eye(n, n);
   mat B = I_n + S_2 * K * S_2;
   mat L = chol(B, "lower");
-  mat z1 = solve(trimatl(L), S_2*K*v);
+  mat z1 = solve(trimatl(L), S_2*(K*v));
   mat z2 = solve(trimatu(L.t()), z1);
   vec z = S_2 * z2;
-  
-  
-  // model select
-  mat b1 = solve(trimatu(L.t()), S_2*K*v);
-  mat b2 = solve(trimatl(L), b1);
-  vec b = v - S_2 * z2;
-  
-  mat R1 = solve(trimatl(L), S_2);
-  mat R2 = solve(trimatu(L.t()), R1);
-  mat R = b * b.t() - S_2 * R2;
-  
-  field<mat> res = {S_2, L, z, b, R};
-  auto t2 = chrono::high_resolution_clock::now();
-  chrono::duration<double, std::milli> fp_ms2 = t2 - t1;
-  cout << "The elapsed time to compute vec: " << fp_ms2.count()<< " milliseconds.\n";
-  return res;
-}
-
-
-// [[Rcpp::export]]
-vec ep_predict_paralle_vec(const mat & S_2, const mat & L, const vec & v, const vec &  z, const mat &  X, const vec &  y, int kernal_type, const mat &  x_test){
-  auto t1 = chrono::high_resolution_clock::now();
   
   int m = x_test.n_rows;
   vec f_test(m), Var(m), pai(m);
@@ -127,23 +102,49 @@ vec ep_predict_paralle_vec(const mat & S_2, const mat & L, const vec & v, const 
   return pai;
 }
 
-
 // [[Rcpp::export]]
-vec ep_model_select(const mat & L, const vec & b, const mat & R, vec theta, int kernal_type){
-  int dim_theta = theta.n_elem;
+vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type){
   double alpha;
+  int max_iter = 20, iter = 0;
+  vec tmp, grad;
+  while(iter++ < max_iter){
+    tmp = theta;
+    grad = ep_model_select(X, y, theta, kernal_type);
+    theta -= alpha * grad;
+    if(norm(tmp - theta, 2) < 1e-3){
+      cout << "Gradient descent iter: " << iter << ".\n";
+      break;
+    }
+  }
+  return grad;
+}
+
+vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type){
+  int dim_theta = theta.n_elem, n = X.n_rows;
+  mat K = kernal_compute_paralle(X, X, kernal_type);
+  field<vec> train_res = ep_train(K, y);
+  vec v = train_res.at(0), tau = train_res.at(1);
+  mat S_2 = diagmat(sqrt(tau)), I_n = eye(n, n);
+  mat B = I_n + S_2 * K * S_2;
+  mat L = chol(B, "lower");
+  mat b1 = solve(trimatu(L.t()), S_2*(K*v));
+  mat b2 = solve(trimatl(L), b1);
+  vec b = v - S_2 * b2;
+  mat R1 = solve(trimatl(L), S_2);
+  mat R2 = solve(trimatu(L.t()), R1);
+  mat R = b * b.t() - S_2 * R2;
+  
   vec grad = zeros<vec>(dim_theta);
-  mat C;
   switch (kernal_type){
   case 1:
     for(int j = 0; j < dim_theta; j++){
+      mat C = ;
       for(int i = 0; i < R.n_rows; i++){
         grad(j) += as_scalar(R.row(i) * C.col(i));
       }
-      grad(j) /= 2;
-      theta(j) -= alpha * grad(j);
     }
   }
+  grad /= 2;
   return grad;
 }
 
@@ -181,106 +182,3 @@ inline double kernal_func_paralle(const rowvec & x1, const rowvec & x2, int kern
   return res;
 }
 
-
-
-// // [[Rcpp::export]]
-// field<mat> compute_vec2(const mat & K, const vec & v, const vec & tau){
-//   auto t1 = chrono::high_resolution_clock::now();
-//   // predict
-//   int n = K.n_rows;
-//   mat S_2 = diagmat(sqrt(tau)), I_n = eye(n, n);
-//   mat B = I_n + S_2 * K * S_2;
-//   mat L = chol(B, "lower");
-//   vec tmp = S_2*K*v;
-//   mat L_1 = solve(trimatl(L), I_n);
-//   vec z = S_2 * (L_1.t() * (L_1 * tmp));
-//   
-//   
-//   // model select
-//   vec b = v - S_2 * (L_1 * (L_1.t() * tmp));
-//   mat R = b * b.t() - S_2 * L_1.t() * L_1 * S_2;
-//   
-//   field<mat> res = {S_2, L, z, b, R};
-//   auto t2 = chrono::high_resolution_clock::now();
-//   chrono::duration<double, std::milli> fp_ms2 = t2 - t1;
-//   cout << "The elapsed time to compute vec2: " << fp_ms2.count()<< " milliseconds.\n";
-//   return res;
-// }
-
-// double ep_predict_paralle(const  mat & K, vec v, vec tau, mat X, vec y, int kernal_type, rowvec x_test){
-//   auto t1 = chrono::high_resolution_clock::now();
-// 
-//   int n = X.n_rows;
-//   mat kx = kernal_compute_paralle(X, x_test, kernal_type);
-// 
-//   mat S_2 = diagmat(sqrt(tau)), I_n = eye(n, n);
-//   mat B = I_n + S_2 * K * S_2;
-//   mat L = chol(B, "lower");
-//   mat L_1 = solve(L, I_n), Lt_1 = solve(L.t(), I_n);
-// 
-//   vec z = S_2 * Lt_1 * L_1 * S_2 * K * v;
-// 
-//   double f_test = as_scalar(kx.t() * (v - z));
-// 
-//   vec v2 = L_1 * S_2 * kx;
-//   double Var = as_scalar(kernal_compute_paralle(x_test, x_test, kernal_type) - v2.t() * v2);
-// 
-//   double pai = normcdf(f_test / sqrt(1 + Var));
-// 
-//   auto t2 = chrono::high_resolution_clock::now();
-//   chrono::duration<double, std::milli> fp_ms = t2 - t1;
-//   cout << "(Paralle) The elapsed time to predict " << fp_ms.count()<< " milliseconds.\n";
-// 
-//   return pai;
-// }
-
-
-// // [[Rcpp::export]]
-// vec ep_predict_paralle_vec(const mat & K, vec v, vec tau, mat X, vec y, int kernal_type, mat x_test){
-//   int n_test = x_test.n_rows;
-//   vec pai_vec(n_test);
-// #pragma omp parallel for schedule(static)
-//   for(int i = 0; i<n_test; i++){
-//     pai_vec(i) = ep_predict_paralle(K, v, tau, X, y, kernal_type, x_test.row(i));
-//   }
-//   return pai_vec;
-// }
-
-// // [[Rcpp::export]]
-// vec ep_predict_paralle_mat(const  mat & K, vec v, vec tau, mat X, vec y, int kernal_type, mat x_test){
-//   auto t1 = chrono::high_resolution_clock::now();
-// 
-//   int n = X.n_rows;
-//   mat kx = kernal_compute_paralle(X, x_test, kernal_type);
-// 
-//   mat S_2 = diagmat(sqrt(tau)), I_n = eye(n, n);
-//   mat B = I_n + S_2 * K * S_2;
-//   mat L = chol(B, "lower");
-//   mat L_1 = solve(L, I_n), Lt_1 = solve(L.t(), I_n);
-// 
-//   vec z = S_2 * Lt_1 * L_1 * S_2 * K * v;
-// 
-//   vec f_test = kx.t() * (v - z);
-// 
-//   mat v2 = L_1 * S_2 * kx;
-//   vec Var = kernal_compute_diag(x_test, kernal_type) - sum(v2 % v2, 0).t();
-// 
-//   vec pai = normcdf(f_test / sqrt(1 + Var));
-// 
-//   auto t2 = chrono::high_resolution_clock::now();
-//   chrono::duration<double, std::milli> fp_ms = t2 - t1;
-//   cout << "(Paralle mat) The elapsed time to predict " << fp_ms.count()<< " milliseconds.\n";
-// 
-//   return pai;
-// }
-
-// vec kernal_compute_diag(const mat & X1, int kernal_type){
-//   int n = X1.n_rows;
-//   vec res(n);
-// #pragma omp parallel for schedule(static)
-//   for(int i = 0; i < n; i++){
-//     res(i) = kernal_func_paralle(X1.row(i), X1.row(i), kernal_type);
-//   }
-//   
-//   return res;
-// }
