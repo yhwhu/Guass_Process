@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1577720365720.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2130236474",
+    "id" : "B28FA388",
+    "lastKnownWriteTime" : 1577612134,
+    "last_content_update" : 1577612134,
+    "path" : "~/C++/data_science/final_work/ep.cpp",
+    "project_path" : "ep.cpp",
+    "properties" : {
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "cpp"
+}
