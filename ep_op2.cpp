@@ -1,4 +1,4 @@
-#include <RcppArmadillo.h>
+# include <RcppArmadillo.h>
 #include <vector>
 #include <omp.h>
 #include <chrono>
@@ -8,19 +8,15 @@ using namespace std;
 // [[Rcpp::plugins(openmp)]]
 // [[Rcpp::depends(RcppArmadillo)]]
 
-field<vec> ep_train(const mat & X, const vec & y, vec theta);
+field<vec> ep_train(const mat & X, const vec & y);
 
-vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const mat & X, vec theta, int kernal_type, const mat &  x_test);
+mat kernal_compute_paralle(const mat & X1, const mat & X2, int kernal_type);
+inline double kernal_func_paralle(const rowvec & x1, const rowvec & x2, int kernal_type);
 
-vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type);
-vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type);
-
-mat kernal_compute_paralle(const mat & X1, const mat & X2, vec theta, int kernal_type);
-inline double kernal_func_paralle(const rowvec & x1, const rowvec & x2, vec theta, int kernal_type);
-
+vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const mat & X, int kernal_type, const mat &  x_test);
 
 // [[Rcpp::export]]
-field<vec> ep_train(const mat & K, const vec & y, vec theta) {
+field<vec> ep_train(const mat & K, const vec & y) {
   auto t1 = chrono::high_resolution_clock::now();
   
   int n = y.n_elem;
@@ -70,9 +66,9 @@ field<vec> ep_train(const mat & K, const vec & y, vec theta) {
 }
 
 // [[Rcpp::export]]
-vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const mat & X, vec theta, int kernal_type, const mat &  x_test){
+vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const mat & X, int kernal_type, const mat &  x_test){
   auto t1 = chrono::high_resolution_clock::now();
-
+  
   int n = K.n_rows;
   mat S_2 = diagmat(sqrt(tau)), I_n = eye(n, n);
   mat B = I_n + S_2 * K * S_2;
@@ -85,10 +81,10 @@ vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const 
   vec f_test(m), Var(m), pai(m);
 #pragma omp parallel for schedule(static)
   for(int i=0; i<m; i++){
-    mat kx = kernal_compute_paralle(X, x_test.row(i), theta, kernal_type);
+    mat kx = kernal_compute_paralle(X, x_test.row(i), kernal_type);
     f_test(i) = as_scalar(kx.t() * (v - z));
     vec v2 = solve(trimatl(L), S_2 * kx);
-    Var(i) = as_scalar(kernal_compute_paralle(x_test.row(i), x_test.row(i), theta, kernal_type) - v2.t() * v2);
+    Var(i) = as_scalar(kernal_compute_paralle(x_test.row(i), x_test.row(i), kernal_type) - v2.t() * v2);
     pai(i) = normcdf(f_test(i) / sqrt(1 + Var(i)));
     // printf("Predict %dth samples, pai is: %f.\n", i, pai(i));
   }
@@ -99,60 +95,15 @@ vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const 
   // cout << "(Paralle inner) The elapsed time to chol " << fp_ms3.count()<< " milliseconds.\n";
   // cout << "(Paralle inner) The elapsed time to solve and mul " << fp_ms.count()<< " milliseconds.\n";
   cout << "The elapsed time to predict: " << fp_ms2.count()<< " milliseconds.\n";
-
+  
   return pai;
 }
 
-// [[Rcpp::export]]
-vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type){
-  double alpha = 1;
-  int max_iter = 20, iter = 0;
-  vec grad;
-  while(iter++ < max_iter){
-    cout << "----Gradient descent iter: " << iter << ". theta is:" << theta;
-    grad = ep_model_select(X, y, theta, kernal_type);
-    cout << "Grad is:" << grad << endl;
-    theta -= alpha * grad;
-    if(norm(grad, 2) < 1e-3){
-      cout << "----Finish gradient descent, iter: " << iter << ". theta is:" << theta;
-      break;
-    }
-    alpha *= 0.9;
-  }
-  return theta;
-}
 
-vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type){
-  int dim_theta = theta.n_elem, n = X.n_rows;
-  mat K = kernal_compute_paralle(X, X, theta, kernal_type);
-  field<vec> train_res = ep_train(K, y, theta);
-  vec v = train_res.at(0), tau = train_res.at(1);
-  mat S_2 = diagmat(sqrt(tau)), I_n = eye(n, n);
-  mat B = I_n + S_2 * K * S_2;
-  mat L = chol(B, "lower");
-  mat b1 = solve(trimatu(L.t()), S_2*(K*v));
-  mat b2 = solve(trimatl(L), b1);
-  vec b = v - S_2 * b2;
-  mat R1 = solve(trimatl(L), S_2);
-  mat R2 = solve(trimatu(L.t()), R1);
-  mat R = b * b.t() - S_2 * R2;
-  
-  mat C;
-  vec grad = zeros<vec>(dim_theta);
-  for(int j = 0; j < dim_theta; j++){
-    switch (kernal_type){
-    case 1:
-      C = kernal_compute_paralle(X, X, theta, 11);
-    }
-    grad(j) = accu(C % R.t());
-  }
-  grad /= 2;
-  return grad;
-}
+
 
 // [[Rcpp::export]]
-mat kernal_compute_paralle(const mat & X1, const mat & X2, vec theta, int kernal_type){
-  
+mat kernal_compute_paralle(const mat & X1, const mat & X2, int kernal_type){
   // auto t1 = chrono::high_resolution_clock::now();
   
   int n = X1.n_rows, m = X2.n_rows;
@@ -160,7 +111,7 @@ mat kernal_compute_paralle(const mat & X1, const mat & X2, vec theta, int kernal
 #pragma omp parallel for schedule(static) collapse(2)
   for(int i = 0; i < n; i++){
     for(int j = 0; j < m; j++){
-      res(i, j) = kernal_func_paralle(X1.row(i), X2.row(j), theta, kernal_type);
+      res(i, j) = kernal_func_paralle(X1.row(i), X2.row(j), kernal_type);
     }
   }
   
@@ -168,22 +119,19 @@ mat kernal_compute_paralle(const mat & X1, const mat & X2, vec theta, int kernal
   // chrono::duration<double, std::milli> fp_ms = t2 - t1;
   // cout << "(Paralle) X1 row is: " << n <<". X2 row is " << m;
   // cout << "The elapsed time to compute K: " << fp_ms.count()<< " milliseconds.\n";
-  // res = symmatl(res);
+  
   return res;
 }
 
-inline double kernal_func_paralle(const rowvec & x1, const rowvec & x2, vec theta, int kernal_type){
-  double res, theta1 = theta(0);
-  switch (kernal_type){
-  case 1:
-    res = norm(x1-x2);
-    res = exp(- res * res / (2 * theta1 * theta1));
-    break;
-  case 11:
-    res = norm(x1-x2);
-    res = res * res * exp(- res * res / (2 * theta1 * theta1)) / (pow(theta1, 3));
-    break;
-  }
+inline double kernal_func_paralle(const rowvec & x1, const rowvec & x2, int kernal_type){
+  double res;
+  // switch (kernal_type){
+  // case 1:
+  //   double sigma = 0.05;
+  //   res = exp(-pow(norm(x1-x2, 2), 2)/sigma);
+  // }
+  double l = 0.05;
+  res = norm(x1-x2);
+  res = exp(- res * res / (2 * l * l));
   return res;
 }
-

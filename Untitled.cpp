@@ -1,14 +1,25 @@
-#include <RcppEigen.h>
+# include <RcppArmadillo.h>
 
-// [[Rcpp::depends(RcppEigen)]]
-using namespace Eigen;
+using namespace arma;
+using namespace std;
 
-// [[Rcpp::export]]
-void modifyV1(MatrixXd x) {
-  x(0,0) =  1;
-}
+
+// [[Rcpp::depends(RcppArmadillo)]]
 
 // [[Rcpp::export]]
-void modifyV2(Map<MatrixXd> x) {
-  x(0,0) =  1;
+int pp(){
+  int a = 2;
+  switch (a){
+  case 1:
+    cout << "111" << endl;
+    break;
+  case 2:
+    cout << "22" << endl;
+    break;
+  }
+  return 0;
 }
+
+/*** R
+pp()
+*/
