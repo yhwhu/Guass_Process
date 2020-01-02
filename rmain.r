@@ -81,23 +81,10 @@ p2 <- ggplot(test_p, aes(x=V1, y=V2, color=test.y)) +
 p3 <- ggplot(test_p, aes(x=V1, y=V2, color=pred1)) + 
   geom_point(size=3) + ggtitle("Test data prediction of prob")
 
-l <- list(p1, p2, p3)
-grid.arrange(grobs = l, ncol = 3)
-
 # plot predict for not selecting
-train_p <- cbind(train.x, train.y)
-train_p <- data.frame(train_p)
-p1 <- ggplot(train_p, aes(x=V1, y=V2, color=train.y)) + 
-  geom_point(size=3) + ggtitle("Train data in two classes")
-
-test_p <- cbind(test.x, pred2, test.y)
-test_p <- data.frame(test_p)
-p2 <- ggplot(test_p, aes(x=V1, y=V2, color=test.y)) + 
-  geom_point(size=3) + ggtitle("Test data in two classes")
-
-p3 <- ggplot(test_p, aes(x=V1, y=V2, color=pred2)) + 
+p4 <- ggplot(test_p, aes(x=V1, y=V2, color=pred2)) + 
   geom_point(size=3) + ggtitle("Test data prediction of prob")
 
-l <- list(p1, p2, p3)
-grid.arrange(grobs = l, ncol = 3)
+l <- list(p1, p2, p3, p4)
+grid.arrange(grobs = l, ncol = 4)
 
