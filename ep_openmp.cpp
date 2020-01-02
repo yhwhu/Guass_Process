@@ -10,13 +10,13 @@ using namespace std;
 
 field<vec> ep_train(const mat & X, const vec & y);
 
-vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const mat & X, vec theta, int kernal_type, const mat &  x_test);
+vec ep_predict(const mat & K, const vec & v, const vec & tau, const mat & X, vec theta, int kernal_type, const mat &  x_test);
 
 vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type);
 vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type);
 
-mat kernal_compute_paralle(const mat & X1, const mat & X2, vec theta, int kernal_type);
-inline double kernal_func_paralle(const rowvec & x1, const rowvec & x2, vec theta, int kernal_type);
+mat kernal_compute(const mat & X1, const mat & X2, vec theta, int kernal_type);
+inline double kernal_func(const rowvec & x1, const rowvec & x2, vec theta, int kernal_type);
 
 
 // [[Rcpp::export]]
@@ -70,7 +70,7 @@ field<vec> ep_train(const mat & K, const vec & y) {
 }
 
 // [[Rcpp::export]]
-vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const mat & X, vec theta, int kernal_type, const mat &  x_test){
+vec ep_predict(const mat & K, const vec & v, const vec & tau, const mat & X, vec theta, int kernal_type, const mat &  x_test){
   auto t1 = chrono::high_resolution_clock::now();
 
   int n = K.n_rows;
@@ -85,10 +85,10 @@ vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const 
   vec f_test(m), Var(m), pai(m);
 #pragma omp parallel for schedule(static)
   for(int i=0; i<m; i++){
-    mat kx = kernal_compute_paralle(X, x_test.row(i), theta, kernal_type);
+    mat kx = kernal_compute(X, x_test.row(i), theta, kernal_type);
     f_test(i) = as_scalar(kx.t() * (v - z));
     vec v2 = solve(trimatl(L), S_2 * kx);
-    Var(i) = as_scalar(kernal_compute_paralle(x_test.row(i), x_test.row(i), theta, kernal_type) - v2.t() * v2);
+    Var(i) = as_scalar(kernal_compute(x_test.row(i), x_test.row(i), theta, kernal_type) - v2.t() * v2);
     pai(i) = normcdf(f_test(i) / sqrt(1 + Var(i)));
     // printf("Predict %dth samples, pai is: %f.\n", i, pai(i));
   }
@@ -124,7 +124,7 @@ vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type){
 
 vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type){
   int dim_theta = theta.n_elem, n = X.n_rows;
-  mat K = kernal_compute_paralle(X, X, theta, kernal_type);
+  mat K = kernal_compute(X, X, theta, kernal_type);
   field<vec> train_res = ep_train(K, y);
   vec v = train_res(0), tau = train_res(1);
   mat S_2 = diagmat(sqrt(tau)), I_n = eye(n, n);
@@ -142,7 +142,7 @@ vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type){
   for(int j = 0; j < dim_theta; j++){
     switch (kernal_type){
     case 1:
-      C = kernal_compute_paralle(X, X, theta, 11);
+      C = kernal_compute(X, X, theta, 11);
     }
     // cout << "sum C: " << accu(C) <<  "   sum Rt"<< accu(R.t()) << endl;
     grad(j) = accu(C % R.t());
@@ -152,7 +152,7 @@ vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type){
 }
 
 // [[Rcpp::export]]
-mat kernal_compute_paralle(const mat & X1, const mat & X2, vec theta, int kernal_type){
+mat kernal_compute(const mat & X1, const mat & X2, vec theta, int kernal_type){
   
   // auto t1 = chrono::high_resolution_clock::now();
   
@@ -161,7 +161,7 @@ mat kernal_compute_paralle(const mat & X1, const mat & X2, vec theta, int kernal
 #pragma omp parallel for schedule(static) collapse(2)
   for(int i = 0; i < n; i++){
     for(int j = 0; j < m; j++){
-      res(i, j) = kernal_func_paralle(X1.row(i), X2.row(j), theta, kernal_type);
+      res(i, j) = kernal_func(X1.row(i), X2.row(j), theta, kernal_type);
     }
   }
   
@@ -173,7 +173,7 @@ mat kernal_compute_paralle(const mat & X1, const mat & X2, vec theta, int kernal
   return res;
 }
 
-inline double kernal_func_paralle(const rowvec & x1, const rowvec & x2, vec theta, int kernal_type){
+inline double kernal_func(const rowvec & x1, const rowvec & x2, vec theta, int kernal_type){
   double res, theta1 = theta(0);
   switch (kernal_type){
   case 1:

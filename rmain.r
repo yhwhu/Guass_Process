@@ -7,20 +7,20 @@ library(gridExtra)
 
 model_with_select = function(train.x, train.y, test.x, theta){
   theta <- gradient_descent(train.x, train.y, theta, 1)
-  K <- kernal_compute_paralle(train.x, train.x, theta, 1)
+  K <- kernal_compute(train.x, train.x, theta, 1)
   res <-  ep_train(K, train.y)
   v <-  res[[1]]
   tau <-  res[[2]]
-  res_predict <- ep_predict_paralle_vec(K, v, tau, train.x, theta, 1, test.x)
+  res_predict <- ep_predict(K, v, tau, train.x, theta, 1, test.x)
   return(res_predict)
 }
 
 model_without_select = function(train.x, train.y, test.x, theta){
-  K <- kernal_compute_paralle(train.x, train.x, theta, 1)
+  K <- kernal_compute(train.x, train.x, theta, 1)
   res <-  ep_train(K, train.y)
   v <-  res[[1]]
   tau <-  res[[2]]
-  res_predict <- ep_predict_paralle_vec(K, v, tau, train.x, theta, 1, test.x)
+  res_predict <- ep_predict(K, v, tau, train.x, theta, 1, test.x)
   return(res_predict)
 }
 
