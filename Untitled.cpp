@@ -7,19 +7,11 @@ using namespace std;
 // [[Rcpp::depends(RcppArmadillo)]]
 
 // [[Rcpp::export]]
-int pp(){
-  int a = 2;
-  switch (a){
-  case 1:
-    cout << "111" << endl;
-    break;
-  case 2:
-    cout << "22" << endl;
-    break;
-  }
+int pp(mat A){
+  cout << accu(A);
   return 0;
 }
 
 /*** R
-pp()
+pp(matrix(1:6, nrow = 2))
 */

@@ -8,7 +8,7 @@ using namespace std;
 // [[Rcpp::plugins(openmp)]]
 // [[Rcpp::depends(RcppArmadillo)]]
 
-field<vec> ep_train(const mat & X, const vec & y, vec theta);
+field<vec> ep_train(const mat & X, const vec & y);
 
 vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const mat & X, vec theta, int kernal_type, const mat &  x_test);
 
@@ -20,7 +20,7 @@ inline double kernal_func_paralle(const rowvec & x1, const rowvec & x2, vec thet
 
 
 // [[Rcpp::export]]
-field<vec> ep_train(const mat & K, const vec & y, vec theta) {
+field<vec> ep_train(const mat & K, const vec & y) {
   auto t1 = chrono::high_resolution_clock::now();
   
   int n = y.n_elem;
@@ -105,19 +105,19 @@ vec ep_predict_paralle_vec(const mat & K, const vec & v, const vec & tau, const 
 
 // [[Rcpp::export]]
 vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type){
-  double alpha = 1;
-  int max_iter = 20, iter = 0;
+  double alpha = 0.001;
+  int max_iter = 30, iter = 0;
   vec grad;
   while(iter++ < max_iter){
     cout << "----Gradient descent iter: " << iter << ". theta is:" << theta;
     grad = ep_model_select(X, y, theta, kernal_type);
     cout << "Grad is:" << grad << endl;
-    theta -= alpha * grad;
-    if(norm(grad, 2) < 1e-3){
-      cout << "----Finish gradient descent, iter: " << iter << ". theta is:" << theta;
+    theta -= log(abs(grad)) * alpha * grad;
+    if(norm(grad, 2) < 4){
+      cout << "----Finish gradient descent, iter: " << iter << ". theta is:" << theta<<endl;
       break;
     }
-    alpha *= 0.9;
+    // alpha *= 0.9;
   }
   return theta;
 }
@@ -125,8 +125,8 @@ vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type){
 vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type){
   int dim_theta = theta.n_elem, n = X.n_rows;
   mat K = kernal_compute_paralle(X, X, theta, kernal_type);
-  field<vec> train_res = ep_train(K, y, theta);
-  vec v = train_res.at(0), tau = train_res.at(1);
+  field<vec> train_res = ep_train(K, y);
+  vec v = train_res(0), tau = train_res(1);
   mat S_2 = diagmat(sqrt(tau)), I_n = eye(n, n);
   mat B = I_n + S_2 * K * S_2;
   mat L = chol(B, "lower");
@@ -144,6 +144,7 @@ vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type){
     case 1:
       C = kernal_compute_paralle(X, X, theta, 11);
     }
+    // cout << "sum C: " << accu(C) <<  "   sum Rt"<< accu(R.t()) << endl;
     grad(j) = accu(C % R.t());
   }
   grad /= 2;
