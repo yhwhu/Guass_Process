@@ -6,11 +6,21 @@ library(ggplot2)
 library(gridExtra)
 
 model = function(train.x, train.y, test.x, theta){
+  theta <- gradient_descent(train.x, train.y, theta, 1)
   K <- kernal_compute_paralle(train.x, train.x, theta, 1)
-  res <-  ep_train(K, train.y, theta)
+  res <-  ep_train(K, train.y)
   v <-  res[[1]]
   tau <-  res[[2]]
-  theta <- gradient_descent(train.x, train.y, theta, 1)
+  res_predict <- ep_predict_paralle_vec(K, v, tau, train.x, theta, 1, test.x)
+  return(res_predict)
+}
+
+model2 = function(train.x, train.y, test.x, theta){
+  K <- kernal_compute_paralle(train.x, train.x, theta, 1)
+  res <-  ep_train(K, train.y)
+  v <-  res[[1]]
+  tau <-  res[[2]]
+  # theta <- gradient_descent(train.x, train.y, theta, 1)
   res_predict <- ep_predict_paralle_vec(K, v, tau, train.x, theta, 1, test.x)
   return(res_predict)
 }
@@ -19,8 +29,8 @@ set.seed(20)
 N <- 100
 p <- 2
 sigma <- matrix(c(1, 0.25, 0.25, 1), nrow = 2)
-data.x1 <- mvrnorm(n = N/2, mu = rep(-1,p), Sigma = sigma)
-data.x2 <- mvrnorm(n = N/2, mu = rep(1,p), Sigma = sigma)
+data.x1 <- mvrnorm(n = N/2, mu = rep(-2,p), Sigma = sigma)
+data.x2 <- mvrnorm(n = N/2, mu = rep(2,p), Sigma = sigma)
 data.x <- rbind(data.x1, data.x2)
 data.y <- c(rep(-1, N/2), rep(1, N/2))
 test.size <- 10
@@ -29,13 +39,13 @@ train.x <- data.x[-index,,drop=FALSE]
 train.y <- data.y[-index,drop=FALSE]
 test.x <- data.x[index,,drop=FALSE]
 test.y <- data.y[index,drop=FALSE]
-theta <- c(1)
-pred4 <-  model(train.x, train.y, test.x, theta)
-pred4
+
+pred1 =  model(train.x, train.y, test.x, 1)
+pred2 =  model2(train.x, train.y, test.x, -68.2569)
 
 res <- microbenchmark::microbenchmark(
-                               pred4 =  model(train.x, train.y, test.x),
-                               # pred5 =  model_paralle_vec2(train.x, train.y, test.x),
+                               pred1 =  model(train.x, train.y, test.x, 1),
+                               pred2 =  model2(train.x, train.y, test.x, -68.2569),
                                times = 3)
 
 # plot all data
@@ -49,12 +59,12 @@ train_p <- data.frame(train_p)
 p1 <- ggplot(train_p, aes(x=V1, y=V2, color=train.y)) + 
   geom_point(size=3) + ggtitle("Train data in two classes")
 
-test_p <- cbind(test.x, pred5, test.y)
+test_p <- cbind(test.x, pred1, test.y)
 test_p <- data.frame(test_p)
 p2 <- ggplot(test_p, aes(x=V1, y=V2, color=test.y)) + 
   geom_point(size=3) + ggtitle("Test data in two classes")
 
-p3 <- ggplot(test_p, aes(x=V1, y=V2, color=pred5)) + 
+p3 <- ggplot(test_p, aes(x=V1, y=V2, color=pred1)) + 
   geom_point(size=3) + ggtitle("Test data prediction of prob")
 
 l <- list(p1, p2, p3)
