@@ -40,7 +40,7 @@ field<vec> ep_train(const mat & K, const vec & y) {
       N_z = normpdf(z_i), Phi_z = normcdf(z_i);
       
       mu_hat = v_i / tau_i + y(i)* tau_i_1 * N_z / (Phi_z * sqrt(1 + tau_i_1));
-      sigma_hat = tau_i_1 - pow(tau_i_1, 2) * N_z  /
+      sigma_hat = tau_i_1 - tau_i_1 * tau_i_1 * N_z  /
         ((1 + tau_i_1) * Phi_z) * (z_i + N_z / Phi_z);
       
       del_tau = 1 / sigma_hat - tau_i - tau(i);
