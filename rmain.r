@@ -15,12 +15,31 @@ model_with_select = function(train.x, train.y, test.x, theta){
   return(res_predict)
 }
 
+model_with_select2 = function(train.x, train.y, test.x, theta){
+  theta <- gradient_descent2(train.x, train.y, theta, 1)
+  K <- kernal_compute(train.x, train.x, theta, 1)
+  res <-  ep_train(K, train.y)
+  v <-  res[[1]]
+  tau <-  res[[2]]
+  res_predict <- ep_predict2(K, v, tau, train.x, theta, 1, test.x)
+  return(res_predict)
+}
+
 model_without_select = function(train.x, train.y, test.x, theta){
   K <- kernal_compute(train.x, train.x, theta, 1)
   res <-  ep_train(K, train.y)
   v <-  res[[1]]
   tau <-  res[[2]]
   res_predict <- ep_predict(K, v, tau, train.x, theta, 1, test.x)
+  return(res_predict)
+}
+
+model_without_select2 = function(train.x, train.y, test.x, theta){
+  K <- kernal_compute(train.x, train.x, theta, 1)
+  res <-  ep_train(K, train.y)
+  v <-  res[[1]]
+  tau <-  res[[2]]
+  res_predict <- ep_predict2(K, v, tau, train.x, theta, 1, test.x)
   return(res_predict)
 }
 
@@ -37,7 +56,7 @@ accuracy <- function(pred1, pred2, test.y){
 }
 
 set.seed(20)
-N <- 400
+N <- 1000
 p <- 2
 sigma <- matrix(c(1, 0.25, 0.25, 1), nrow = 2)
 data.x1 <- mvrnorm(n = N/2, mu = rep(-1,p), Sigma = sigma)
@@ -51,16 +70,16 @@ train.y <- data.y[-index,drop=FALSE]
 test.x <- data.x[index,,drop=FALSE]
 test.y <- data.y[index,drop=FALSE]
 
-pred1 <-   model_with_select(train.x, train.y, test.x, 10)
+pred1 <-   model_with_select(train.x, train.y, test.x, theta=10)
 pred2 <-   model_without_select(train.x, train.y, test.x, 1)
 
 accuracy(pred1, pred2, test.y)
 
 
 res <- microbenchmark::microbenchmark(
-                               pred1 =  model(train.x, train.y, test.x, 1),
-                               pred2 =  model2(train.x, train.y, test.x, 1),
-                               times = 3)
+                               # pred1 =  model_with_select(train.x, train.y, test.x, 10),
+                               pred2 =  model_without_select(train.x, train.y, test.x, 1),
+                               times = 5)
 
 # plot all data
 data_sample <- data.frame(x1=data.x[,1],x2=data.x[,2],y=as.character(data.y))
