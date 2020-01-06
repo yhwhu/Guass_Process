@@ -1,4 +1,3 @@
-
 Rcpp::sourceCpp('ep_openmp.cpp')
 library(MASS)
 library(kernlab)
@@ -15,15 +14,6 @@ model_with_select = function(train.x, train.y, test.x, theta){
   return(res_predict)
 }
 
-model_with_select2 = function(train.x, train.y, test.x, theta){
-  theta <- gradient_descent2(train.x, train.y, theta, 1)
-  K <- kernal_compute(train.x, train.x, theta, 1)
-  res <-  ep_train(K, train.y)
-  v <-  res[[1]]
-  tau <-  res[[2]]
-  res_predict <- ep_predict2(K, v, tau, train.x, theta, 1, test.x)
-  return(res_predict)
-}
 
 model_without_select = function(train.x, train.y, test.x, theta){
   K <- kernal_compute(train.x, train.x, theta, 1)
@@ -34,14 +24,6 @@ model_without_select = function(train.x, train.y, test.x, theta){
   return(res_predict)
 }
 
-model_without_select2 = function(train.x, train.y, test.x, theta){
-  K <- kernal_compute(train.x, train.x, theta, 1)
-  res <-  ep_train(K, train.y)
-  v <-  res[[1]]
-  tau <-  res[[2]]
-  res_predict <- ep_predict2(K, v, tau, train.x, theta, 1, test.x)
-  return(res_predict)
-}
 
 accuracy <- function(pred1, pred2, test.y){
   test.size <- length(test.y)
@@ -70,8 +52,12 @@ train.y <- data.y[-index,drop=FALSE]
 test.x <- data.x[index,,drop=FALSE]
 test.y <- data.y[index,drop=FALSE]
 
-pred1 <-   model_with_select(train.x, train.y, test.x, theta=10)
+pred1 <-   model_with_select(train.x, train.y, test.x, theta=1)
 pred2 <-   model_without_select(train.x, train.y, test.x, 1)
+pred2[pred2 > 0.5] <- 1
+pred2[pred2 < 0.5] <- -1
+sum(pred2==test.y) / test.size
+
 
 accuracy(pred1, pred2, test.y)
 
