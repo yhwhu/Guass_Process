@@ -64,7 +64,7 @@ field<vec> ep_train(const mat & K, const vec & y) {
   
   auto t2 = chrono::high_resolution_clock::now();
   chrono::duration<double, std::milli> fp_ms = t2 - t1;
-  cout << "The elapsed time to train: " << fp_ms.count()<< " milliseconds.\n";
+  // cout << "The elapsed time to train: " << fp_ms.count()<< " milliseconds.\n";
   
   return res;
 }
@@ -102,7 +102,7 @@ vec ep_predict(const mat & K, const vec & v, const vec & tau, const mat & X, vec
   // chrono::duration<double, std::milli> fp_ms = t3 - t2, fp_ms2 = t8 - t1, fp_ms3 = t5 - t4;
   // cout << "(Paralle inner) The elapsed time to chol " << fp_ms3.count()<< " milliseconds.\n";
   // cout << "(Paralle inner) The elapsed time to solve and mul " << fp_ms.count()<< " milliseconds.\n";
-  cout << "The elapsed time to predict: " << fp_ms.count()<< " milliseconds.\n";
+  // cout << "The elapsed time to predict: " << fp_ms.count()<< " milliseconds.\n";
   
   return pai;
 }
@@ -127,7 +127,7 @@ vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type){
   
   auto t2 = chrono::high_resolution_clock::now();
   chrono::duration<double, std::milli> fp_ms = t2 - t1;
-  cout << "The elapsed time to gradient descent: " << fp_ms.count()<< " milliseconds.\n";
+  // cout << "The elapsed time to gradient descent: " << fp_ms.count()<< " milliseconds.\n";
   
   return theta;
 }

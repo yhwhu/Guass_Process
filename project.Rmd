@@ -1,0 +1,418 @@
+---
+title: "Final Work"
+author:
+- Yonghua Su 2019000154
+- Maoyu Zhang 2019000157
+date: "1/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## EP algorithm
+```{Rcpp, warning=FALSE}
+#include <RcppArmadillo.h>
+#include <vector>
+#include <omp.h>
+#include <chrono>
+using namespace arma;
+using namespace std;
+
+// [[Rcpp::plugins(openmp)]]
+// [[Rcpp::depends(RcppArmadillo)]]
+
+field<vec> ep_train(const mat & X, const vec & y);
+
+vec ep_predict(const mat & K, const vec & v, const vec & tau, const mat & X, vec theta, int kernal_type, const mat &  x_test);
+
+vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type);
+vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type);
+
+mat kernal_compute(const mat & X1, const mat & X2, vec theta, int kernal_type);
+inline double kernal_func(const rowvec & x1, const rowvec & x2, vec theta, int kernal_type);
+
+
+// [[Rcpp::export]]
+field<vec> ep_train(const mat & K, const vec & y) {
+  int n = y.n_elem;
+  cout << "Train sample size is: " << n;
+  vec v =  zeros<vec>(n), tau = v, mu = v;
+  mat sigma = K;
+  int iter = 0, max_iter = 20;
+  double tau_i, v_i, tau_i_1, z_i, N_z, Phi_z, mu_hat, sigma_hat, del_tau;
+  while( iter++ < max_iter){
+    vec tmp = v;
+    for(int i = 0; i < n; i++){
+      tau_i = 1 / sigma(i, i) - tau(i);
+      v_i = 1 / sigma(i, i) * mu(i) - v(i);
+      
+      tau_i_1 = 1 / tau_i;
+      z_i = y(i) * v_i * tau_i_1 / sqrt(1 + tau_i_1);
+      N_z = normpdf(z_i), Phi_z = normcdf(z_i);
+      
+      mu_hat = v_i / tau_i + y(i)* tau_i_1 * N_z / (Phi_z * sqrt(1 + tau_i_1));
+      sigma_hat = tau_i_1 - tau_i_1 * tau_i_1 * N_z  /
+        ((1 + tau_i_1) * Phi_z) * (z_i + N_z / Phi_z);
+      
+      del_tau = 1 / sigma_hat - tau_i - tau(i);
+      tau(i) += del_tau;
+      v(i) = 1 / sigma_hat * mu_hat - v_i;
+      sigma -= 1 / (1 / del_tau + sigma(i,i)) * sigma.col(i) * (sigma.col(i).t());
+      mu = sigma * v;
+    }
+    if(norm(v-tmp, 2) < 1e-3){
+      cout << ". Train iter: " << iter << ".\n";
+      break;
+    }
+  }
+  field<vec> res = {v, tau};
+  
+  return res;
+}
+
+// [[Rcpp::export]]
+vec ep_predict(const mat & K, const vec & v, const vec & tau, const mat & X, vec theta, int kernal_type, const mat &  x_test){
+
+  int n = K.n_rows;
+  cout << "Test sample size is: " << x_test.n_rows << endl;
+  mat I_n = eye(n, n);
+  vec tau_2 = sqrt(tau);
+  mat B = I_n + (K.each_col() % tau_2).each_row() % tau_2.t();
+  mat L = chol(B, "lower");
+  
+  vec tmp = (K*v) % tau_2;
+  vec z1 = solve(trimatl(L), tmp);
+  vec z2 = solve(trimatu(L.t()), z1);
+  vec z = z2 % tau_2;
+  
+  int m = x_test.n_rows;
+  vec f_test(m), Var(m), pai(m);
+#pragma omp parallel for schedule(static)
+  for(int i=0; i<m; i++){
+    vec kx = kernal_compute(X, x_test.row(i), theta, kernal_type);
+    f_test(i) = as_scalar(kx.t() * (v - z));
+    vec v2 = solve(trimatl(L), kx % tau_2);
+    Var(i) = as_scalar(kernal_compute(x_test.row(i), x_test.row(i), theta, kernal_type) - v2.t() * v2);
+    pai(i) = normcdf(f_test(i) / sqrt(1 + Var(i)));
+  }
+  return pai;
+}
+
+// [[Rcpp::export]]
+vec gradient_descent(const mat & X, const vec & y, vec theta, int kernal_type){
+  double alpha = 0.001;
+  int max_iter = 30, iter = 0;
+  vec grad;
+  while(iter++ < max_iter){
+    cout << "----Gradient descent iter: " << iter << ". theta is:" << theta;
+    grad = ep_model_select(X, y, theta, kernal_type);
+    cout << "Grad is:" << grad << endl;
+    theta -= log(abs(grad)) * alpha * grad;
+    if(norm(grad, 2) < 4){
+      cout << "----Finish gradient descent, iter: " << iter << ". theta is:" << theta<<endl;
+      break;
+    }
+    // alpha *= 0.9;
+  }
+  
+  return theta;
+}
+
+vec ep_model_select(const mat & X, const vec & y, vec theta, int kernal_type){
+  int dim_theta = theta.n_elem, n = X.n_rows;
+  mat K = kernal_compute(X, X, theta, kernal_type);
+  field<vec> train_res = ep_train(K, y);
+  vec v = train_res(0), tau = train_res(1);
+  vec tau_2 = sqrt(tau);
+  mat I_n = eye(n, n);
+  mat B = I_n + (K.each_col() % tau_2).each_row() % tau_2.t();
+  
+  mat L = chol(B, "lower");
+  vec tmp = (K*v) % tau_2;
+  vec b1 = solve(trimatu(L.t()), tmp);
+  vec b2 = solve(trimatl(L), b1);
+  vec b = v - b2 % tau_2;
+  I_n.diag() %= tau_2;
+  mat R1 = solve(trimatl(L), I_n);
+  mat R2 = solve(trimatu(L.t()), R1);
+  mat R = b * b.t() - R2.each_col() % tau_2;
+  
+  mat C;
+  vec grad = zeros<vec>(dim_theta);
+  // TODO paralle
+  for(int j = 0; j < dim_theta; j++){
+    switch (kernal_type){
+    case 1:
+      C = kernal_compute(X, X, theta, 11);
+    }
+    grad(j) = accu(C % R.t());
+  }
+  grad /= 2;
+  return grad;
+}
+
+// [[Rcpp::export]]
+mat kernal_compute(const mat & X1, const mat & X2, vec theta, int kernal_type){
+  int n = X1.n_rows, m = X2.n_rows;
+  mat res(n, m);
+#pragma omp parallel for schedule(static) collapse(2)
+  for(int i = 0; i < n; i++){
+    for(int j = 0; j < m; j++){
+      res(i, j) = kernal_func(X1.row(i), X2.row(j), theta, kernal_type);
+    }
+  }
+  return res;
+}
+
+inline double kernal_func(const rowvec & x1, const rowvec & x2, vec theta, int kernal_type){
+  double res, theta1 = theta(0);
+  switch (kernal_type){
+  case 1:
+    res = norm(x1-x2);
+    res = exp(- res * res / (2 * theta1 * theta1));
+    break;
+  case 11:
+    res = norm(x1-x2);
+    res = res * res * exp(- res * res / (2 * theta1 * theta1)) / (pow(theta1, 3));
+    break;
+  }
+  return res;
+}
+```
+
+## Library
+```{r library, message=FALSE}
+library(MASS)
+library(kernlab)
+library(ggplot2)
+library(gridExtra)
+library(plotly)
+library(rpart)
+library(randomForest)
+library(pROC)
+library(data.table)
+```
+
+This part is data cleansing. First of all, we remove the missing value in the data, then we choose the airport of longitude and latitude as the explained variable, choosing arrival_delay time as response variables, we arrived to the same airport on the same day average delay time, to calculate an average delay time, more than 10 minutes + 1, as delay, less than 10 minutes to 1, as without delay, finally, we get 2223 samples. Our main idea is to predict how many delays would occur seven days a week if airports are built at other latitudes and longitude, by training the relationship between delay time at different airports from Monday to Sunday.
+
+## Data clean
+```{r data clean}
+flights <- read.csv("flights.csv")
+airports <- read.csv("airports.csv")
+a=flights[,4]
+b=as.character(flights[,8])
+c=flights[,23]
+flights2<-data.frame(DAY_OF_WEEK=a,ORIGIN_AIRPORT=b,ARRIVAL_DELAY=c)
+a1=as.character(airports[,1])
+a2=airports[,6]
+a3=airports[,7]
+airports2<-data.frame(ORIGIN_AIRPORT=a1,LATITUDE=a2,LONGITUDE=a3)
+merge_data=merge(flights2,airports2,by='ORIGIN_AIRPORT')
+list2<-unique(merge_data$ORIGIN_AIRPORT)
+list3<-unique(merge_data$port_day)
+###去掉存在缺失值的行
+merge_data<-na.omit(merge_data)
+###按组计算均值
+merge_data$port_day=paste(merge_data$ORIGIN_AIRPORT,merge_data$DAY_OF_WEEK)
+list<-unique(merge_data$port_day)
+mean_delay<-tapply(merge_data$ARRIVAL_DELAY,merge_data$port_day,mean)
+####
+mean_data<-merge_data[!duplicated(merge_data$port_day),]
+mean_data<-as.data.frame(cbind(mean_data,mean_delay))
+mean_data=mean_data[,-6]
+mean_data=mean_data[,-3]
+mean_data$delay=mean_data$mean_delay
+mean_data$delay[mean_delay>10]=1
+mean_data$delay[mean_delay<=10]=-1
+df <- read.csv("mean_data.csv")
+df <- df[,-(1:2)]
+X <- as.matrix(df[,2:4])
+y <- df$delay
+
+model_without_select = function(train.x, train.y, test.x, theta){
+  K <- kernal_compute(train.x, train.x, theta, 1)
+  res <-  ep_train(K, train.y)
+  v <-  res[[1]]
+  tau <-  res[[2]]
+  res_predict <- ep_predict(K, v, tau, train.x, theta, 1, test.x)
+  return(res_predict)
+}
+```
+The following part is used to calculate the accuracy of the model without parameters.
+
+## Train and predict
+
+The following sections calculate the accuracy.
+The training set is all data and backtested, the accuracy is 92.8%.
+```{r ep train all data}
+pred1 <- model_without_select(X, y, X, 1)
+pred1[pred1 > 0.5] <- 1
+pred1[pred1 <= 0.5] <- -1
+sum(pred1==y) / nrow(X)
+```
+
+Using part of the data as the training set, 1000 test samples, the accuracy is 86.1%
+```{r train set and test set}
+N <- nrow(df)
+test.size <- 1000
+index <- sample(1:N, test.size)
+train.x <- X[-index,,drop=FALSE]
+train.y <- y[-index,drop=FALSE]
+test.x <- X[index,,drop=FALSE]
+test.y <- y[index,drop=FALSE]
+pred2 <-   model_without_select(train.x, train.y, test.x, 1)
+pred2[pred2 > 0.5] <- 1
+pred2[pred2 <= 0.5] <- -1
+sum(pred2==test.y) / test.size
+```
+
+## USA airport map
+The EM algorithm is used to predict the average delay probability of each airport, and the probability value is also predicted where there is no airport, and the average daily delay time heat map is drawn.
+
+It can be seen that the delay probability of airports is different at different times. Outside the United States, the probability value is about 0.5
+```{r ep plot map}
+X <- as.data.frame(X)
+y <- as.matrix(y[X$LONGITUDE > -130 & X$LATITUDE < 60 & X$LATITUDE > 20])
+X <- as.matrix(X[X$LONGITUDE > -130 & X$LATITUDE < 60 & X$LATITUDE > 20,])
+df_expand <- expand.grid(lat = seq(min(X[,2]) - 5, max(X[,2]) + 5, length.out = 70),
+                       long = seq(min(X[,3]) - 5, max(X[,3]) + 5, length.out = 70))
+K <- kernal_compute(X, X, 1, 1)
+res <-  ep_train(K, y)
+v <-  res[[1]]
+tau <-  res[[2]]
+
+plot_map <- function(i, K, v, tau, df_expand){
+  test.x <- as.matrix(cbind(day_of_week = i, df_expand))
+  res_predict <- ep_predict(K, v, tau, X, 1, 1, test.x)
+  df_plot <- cbind(df_expand, res_predict)
+  ggplot(df_plot, aes(long, lat, fill= res_predict)) + 
+    geom_tile()+ scale_fill_gradient(low="green", high="red") +
+    ggtitle(paste("day_of_week",i,sep=""))
+}
+```
+
+### Day of week1
+```{R}
+plot_map(1, K, v, tau, df_expand)
+```
+
+### Day of week2
+```{R}
+plot_map(2, K, v, tau, df_expand)
+```
+
+### Day of week3
+```{R}
+plot_map(3, K, v, tau, df_expand)
+```
+
+### Day of week4
+```{R}
+plot_map(4, K, v, tau, df_expand)
+```
+
+### Day of week5
+```{R}
+plot_map(5, K, v, tau, df_expand)
+```
+
+### Day of week6
+```{R}
+plot_map(6, K, v, tau, df_expand)
+```
+
+### Day of week7
+```{R}
+plot_map(7, K, v, tau, df_expand)
+```
+
+
+## Data clean2
+
+In order to select a better kernel function, we adjust the kernel function to select the optimal parameters. Therefore, we used random forest to select variables, and selected the variables with the highest correlation with arrival delay for training, so as to calculate the prediction accuracy of model adjusting parameters or not.Finally, 1000 samples were randomly selected and the accuracy of model prediction was calculated by cross validation.
+
+```{r data clean2}
+flights2 <- flights
+
+#Select col
+select_col <- c("MONTH", "DAY", "DAY_OF_WEEK", 
+                "AIRLINE", "ORIGIN_AIRPORT", "DESTINATION_AIRPORT", "SCHEDULED_DEPARTURE", 
+                "DEPARTURE_TIME", "DEPARTURE_DELAY", "TAXI_OUT", "SCHEDULED_TIME", 
+                "ELAPSED_TIME", "AIR_TIME", "DISTANCE", "TAXI_IN", "ARRIVAL_DELAY")
+flights2 <- flights2[, select_col]
+#去缺失值
+flights2 <- na.omit(flights2)
+
+flights2 <- flights2[,-c(4:8)]
+
+## 随机森林
+fit_forest <- randomForest(ARRIVAL_DELAY~., data = flights2[sample(1:nrow(flights2), 10000, replace = FALSE),],ntree=100,mtry=5,importance=TRUE, proximity=TRUE)
+print(fit_forest$importance)
+varImpPlot(fit_forest)
+
+select_col1 <- c("DEPARTURE_DELAY","TAXI_OUT","ARRIVAL_DELAY")
+flights_final <- flights2[, select_col1]
+
+flights_final$ARRIVAL_DELAY[flights_final$ARRIVAL_DELAY<10]=-1
+flights_final$ARRIVAL_DELAY[flights_final$ARRIVAL_DELAY>=10]=1
+sample_data<-flights_final[sample(1:nrow(flights_final), 1000, replace = FALSE),]
+```
+
+## Select parameter
+
+The last part is to compare the predictive accuracy of models with or without adjusting parameters. The final result is that the prediction accuracy of adjusted parameters is 79.1%, while the prediction accuracy without adjusting parameters is 99%.
+```{r ep select parameter}
+df <- sample_data[,-1]
+X <- as.matrix(df[,1:2])
+y <- df$ARRIVAL_DELAY
+theta0 <- c(10)
+
+model_without_select = function(train.x, train.y, test.x, theta){
+  K <- kernal_compute(train.x, train.x, theta, 1)
+  res <-  ep_train(K, train.y)
+  v <-  res[[1]]
+  tau <-  res[[2]]
+  res_predict <- ep_predict(K, v, tau, train.x, theta, 1, test.x)
+  return(res_predict)
+}
+
+model_with_select = function(train.x, train.y, test.x, theta){
+  theta1<-gradient_descent(train.x,train.y,theta,1)
+  K <- kernal_compute(train.x, train.x, theta1, 1)
+  res <-  ep_train(K, train.y)
+  v <-  res[[1]]
+  tau <-  res[[2]]
+  res_predict <- ep_predict(K, v, tau, train.x, theta1, 1, test.x)
+  return(res_predict)
+}
+
+# Cross validation
+N <- nrow(df)
+k <- 5
+test.size <- N/k
+id <- rep(1:k,test.size)
+id <- sample(id,length(id))
+pred_no_select <- rep(NA,k)
+pred_select <- rep(NA,k)
+
+for(i in 1:k){
+  index <- which(id==i)
+  train.x <- X[-index,,drop=FALSE]
+  train.y <- y[-index,drop=FALSE]
+  test.x <- X[index,,drop=FALSE]
+  test.y <- y[index,drop=FALSE]
+  pred_no <-   model_without_select(train.x, train.y, test.x, theta0)
+  pred_no[pred_no > 0.5] <- 1
+  pred_no[pred_no <= 0.5] <- -1
+  pred_no_select[i] <- sum(pred_no==test.y) / test.size
+  
+  pred <-   model_with_select(train.x, train.y, test.x, theta0)
+  pred[pred > 0.5] <- 1
+  pred[pred <= 0.5] <- -1
+  pred_select[i] <- sum(pred==test.y) / test.size
+}
+mean(pred_no_select)
+mean(pred_select)
+```
